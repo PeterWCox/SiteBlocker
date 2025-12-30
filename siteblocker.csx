@@ -11,6 +11,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Net;
+using System.Text;
 
 // Configuration
 // Try to find config.json relative to script location or current directory
@@ -37,6 +39,25 @@ var hostsFile = "/etc/hosts";
 var markerStart = "# SiteBlocker START";
 var markerEnd = "# SiteBlocker END";
 
+// Find HTML file path
+var htmlFile = "blocked.html";
+if (!File.Exists(htmlFile))
+{
+    var scriptPath = Environment.GetCommandLineArgs().FirstOrDefault() ?? "";
+    if (!string.IsNullOrEmpty(scriptPath) && File.Exists(scriptPath))
+    {
+        var scriptDir = Path.GetDirectoryName(Path.GetFullPath(scriptPath));
+        if (!string.IsNullOrEmpty(scriptDir))
+        {
+            var altHtml = Path.Combine(scriptDir, "blocked.html");
+            if (File.Exists(altHtml))
+            {
+                htmlFile = altHtml;
+            }
+        }
+    }
+}
+
 class Config
 {
     public List<string> blocklist { get; set; } = new List<string>();
@@ -49,14 +70,19 @@ class SiteBlocker
     private string lockFilePath;
     private string configFilePath;
     private string hostsFilePath;
+    private string htmlFilePath;
     private string markerStart;
     private string markerEnd;
+    private HttpListener httpListener;
+    private CancellationTokenSource serverCancellation;
+    private Task serverTask;
 
-    public SiteBlocker(string configFile, string lockFile, string hostsFile, string markerStart, string markerEnd)
+    public SiteBlocker(string configFile, string lockFile, string hostsFile, string htmlFile, string markerStart, string markerEnd)
     {
         this.configFilePath = configFile;
         this.lockFilePath = lockFile;
         this.hostsFilePath = hostsFile;
+        this.htmlFilePath = htmlFile;
         this.markerStart = markerStart;
         this.markerEnd = markerEnd;
         this.config = LoadConfig();
@@ -183,6 +209,123 @@ class SiteBlocker
         return lines;
     }
 
+    private void StartHttpServer()
+    {
+        try
+        {
+            httpListener = new HttpListener();
+            httpListener.Prefixes.Add("http://127.0.0.1:80/");
+            httpListener.Start();
+            
+            serverCancellation = new CancellationTokenSource();
+            serverTask = RunHttpServer(serverCancellation.Token);
+            
+            Console.WriteLine("✓ HTTP server started on port 80");
+        }
+        catch (HttpListenerException ex)
+        {
+            if (ex.ErrorCode == 5) // Access denied - try port 8080
+            {
+                Console.WriteLine("Port 80 requires root. Trying port 8080...");
+                try
+                {
+                    httpListener = new HttpListener();
+                    httpListener.Prefixes.Add("http://127.0.0.1:8080/");
+                    httpListener.Start();
+                    
+                    serverCancellation = new CancellationTokenSource();
+                    serverTask = Task.Run(() => RunHttpServer(serverCancellation.Token));
+                    
+                    Console.WriteLine("✓ HTTP server started on port 8080");
+                    Console.WriteLine("Note: You may need to update /etc/hosts to redirect to 127.0.0.1:8080");
+                }
+                catch (Exception e2)
+                {
+                    Console.WriteLine($"Warning: Could not start HTTP server: {e2.Message}");
+                    Console.WriteLine("Blocked sites will show connection errors instead of the focus page.");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"Warning: Could not start HTTP server: {ex.Message}");
+                Console.WriteLine("Blocked sites will show connection errors instead of the focus page.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Warning: Could not start HTTP server: {ex.Message}");
+            Console.WriteLine("Blocked sites will show connection errors instead of the focus page.");
+        }
+    }
+
+    private async Task RunHttpServer(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested && httpListener != null && httpListener.IsListening)
+        {
+            try
+            {
+                var context = await httpListener.GetContextAsync();
+                
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var response = context.Response;
+                        response.ContentType = "text/html; charset=utf-8";
+                        response.StatusCode = 200;
+                        
+                        if (File.Exists(htmlFilePath))
+                        {
+                            var htmlContent = File.ReadAllText(htmlFilePath);
+                            var buffer = Encoding.UTF8.GetBytes(htmlContent);
+                            response.ContentLength64 = buffer.Length;
+                            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length, cancellationToken);
+                        }
+                        else
+                        {
+                            var defaultHtml = "<html><body><h1>Focus Mode Active</h1><p>This site is blocked.</p></body></html>";
+                            var buffer = Encoding.UTF8.GetBytes(defaultHtml);
+                            response.ContentLength64 = buffer.Length;
+                            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length, cancellationToken);
+                        }
+                        
+                        response.OutputStream.Close();
+                    }
+                    catch
+                    {
+                        // Ignore errors
+                    }
+                }, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (HttpListenerException)
+            {
+                // Listener was closed
+                break;
+            }
+            catch (Exception)
+            {
+                // Ignore other errors and continue
+                await Task.Delay(100, cancellationToken);
+            }
+        }
+    }
+
+    private void StopHttpServer()
+    {
+        if (httpListener != null && httpListener.IsListening)
+        {
+            serverCancellation?.Cancel();
+            httpListener.Stop();
+            httpListener.Close();
+            httpListener = null;
+            Console.WriteLine("✓ HTTP server stopped");
+        }
+    }
+
     public void Activate()
     {
         if (IsActive())
@@ -196,6 +339,9 @@ class SiteBlocker
 
         // Create lock file with start time
         File.WriteAllText(lockFilePath, DateTime.Now.ToString("O"));
+
+        // Start HTTP server
+        StartHttpServer();
 
         // Modify /etc/hosts
         var lines = ReadHosts();
@@ -217,6 +363,9 @@ class SiteBlocker
 
         var duration = GetActiveDuration();
         Console.WriteLine($"Deactivating SiteBlocker (was active for {FormatDuration(duration)})...");
+
+        // Stop HTTP server
+        StopHttpServer();
 
         // Remove entries from /etc/hosts
         var lines = ReadHosts();
@@ -284,7 +433,7 @@ class SiteBlocker
 }
 
 // Main
-var blocker = new SiteBlocker(configFile, lockFile, hostsFile, markerStart, markerEnd);
+var blocker = new SiteBlocker(configFile, lockFile, hostsFile, htmlFile, markerStart, markerEnd);
 var args = Environment.GetCommandLineArgs();
 
 // dotnet-script passes: [dotnet-script path, script path, ...args]

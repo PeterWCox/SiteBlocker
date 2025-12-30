@@ -5,10 +5,12 @@ A local DNS blocker for focus sessions, similar to freedom.to. Blocks distractin
 ## Features
 
 - 🚫 Block distracting websites via DNS redirection
+- 🎨 Beautiful HTML page shown when accessing blocked sites (with Tailwind CSS)
 - ⏱️ Track active session duration
 - 🔧 Configurable blocklist
 - 🔒 Lock file mechanism to track active state
 - 💻 Simple CLI interface
+- 🌐 Built-in HTTP server to serve focus page
 
 ## Setup
 
@@ -93,8 +95,11 @@ sudo dotnet-script siteblocker.csx deactivate
 ## How it works
 
 1. **DNS Blocking**: Modifies `/etc/hosts` to redirect blocked domains to `127.0.0.1`
-2. **Lock File**: Creates `~/.siteblocker.lock` to track active state and start time
-3. **Timer**: Calculates duration from lock file timestamp
+2. **HTTP Server**: Starts a local web server on port 80 to serve a beautiful "Focus Mode" page
+3. **Lock File**: Creates `~/.siteblocker.lock` to track active state and start time
+4. **Timer**: Calculates duration from lock file timestamp
+
+When you try to access a blocked site, instead of seeing an error, you'll see a beautiful HTML page encouraging you to stay focused!
 
 ## Security Note
 
