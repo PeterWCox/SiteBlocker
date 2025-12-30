@@ -1,15 +1,21 @@
 # Lock file
 .siteblocker.lock
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
+# .NET
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+*.cache
+*.user
+.vs/
+*.csproj.user
+*.suo
+*.userosscache
+*.sln.docstates
 
-# Virtual environments
-venv/
-env/
-ENV/
+# dotnet-script
+.dotnet/
+*.csx.lock
 

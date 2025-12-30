@@ -12,25 +12,36 @@ A local DNS blocker for focus sessions, similar to freedom.to. Blocks distractin
 
 ## Setup
 
-### 1. Install Python 3
+### 1. Install .NET SDK
 
-Make sure you have Python 3 installed:
+Make sure you have .NET SDK installed:
 ```bash
-python3 --version
+dotnet --version
 ```
 
-### 2. Make the script executable
+### 2. Install dotnet-script
 
 ```bash
-chmod +x siteblocker.py
+dotnet tool install -g dotnet-script
 ```
 
-### 3. Create an alias
+Add dotnet tools to your PATH (add to `~/.zprofile`):
+```bash
+export PATH="$PATH:/Users/pcox/.dotnet/tools"
+```
+
+### 3. Make the script executable
+
+```bash
+chmod +x siteblocker.csx
+```
+
+### 4. Create an alias
 
 Add this to your `~/.zshrc` (or `~/.bashrc` if using bash):
 
 ```bash
-alias focus="sudo python3 /Users/pcox/dev/SiteBlocker/siteblocker.py activate"
+alias focus="sudo dotnet-script /Users/pcox/dev/SiteBlocker/siteblocker.csx activate"
 ```
 
 Then reload your shell:
@@ -71,12 +82,12 @@ This will:
 
 ### Check status
 ```bash
-sudo python3 siteblocker.py status
+sudo dotnet-script siteblocker.csx status
 ```
 
 ### Deactivate manually
 ```bash
-sudo python3 siteblocker.py deactivate
+sudo dotnet-script siteblocker.csx deactivate
 ```
 
 ## How it works
