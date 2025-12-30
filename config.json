@@ -1,0 +1,22 @@
+{
+  "blocklist": [
+    "bbc.co.uk",
+    "www.bbc.co.uk",
+    "reddit.com",
+    "www.reddit.com",
+    "facebook.com",
+    "www.facebook.com",
+    "twitter.com",
+    "www.twitter.com",
+    "x.com",
+    "www.x.com",
+    "instagram.com",
+    "www.instagram.com",
+    "youtube.com",
+    "www.youtube.com",
+    "tiktok.com",
+    "www.tiktok.com"
+  ],
+  "redirect_ip": "127.0.0.1"
+}
+
