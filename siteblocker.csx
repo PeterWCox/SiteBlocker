@@ -15,23 +15,41 @@ using System.Net;
 using System.Text;
 
 // Configuration
-// Try to find config.json relative to script location or current directory
+// Find script directory by looking for .csx file in command line args
+var scriptDir = Directory.GetCurrentDirectory();
 var configFile = "config.json";
-if (!File.Exists(configFile))
+
+// Look through all command line args for the .csx script file
+foreach (var arg in Environment.GetCommandLineArgs())
 {
-    // If not in current dir, try script directory
-    var scriptPath = Environment.GetCommandLineArgs().FirstOrDefault() ?? "";
-    if (!string.IsNullOrEmpty(scriptPath) && File.Exists(scriptPath))
+    if (arg.EndsWith(".csx"))
     {
-        var scriptDir = Path.GetDirectoryName(Path.GetFullPath(scriptPath));
-        if (!string.IsNullOrEmpty(scriptDir))
+        var fullPath = Path.GetFullPath(arg);
+        if (File.Exists(fullPath))
         {
-            var altConfig = Path.Combine(scriptDir, "config.json");
-            if (File.Exists(altConfig))
+            var dir = Path.GetDirectoryName(fullPath);
+            if (!string.IsNullOrEmpty(dir))
             {
-                configFile = altConfig;
+                scriptDir = dir;
+                break;
             }
         }
+    }
+}
+
+// Look for config.json in script directory first
+var scriptConfig = Path.Combine(scriptDir, "config.json");
+if (File.Exists(scriptConfig))
+{
+    configFile = scriptConfig;
+}
+else
+{
+    // Fallback: try current directory
+    var currentConfig = Path.Combine(Directory.GetCurrentDirectory(), "config.json");
+    if (File.Exists(currentConfig))
+    {
+        configFile = currentConfig;
     }
 }
 var lockFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".siteblocker.lock");
@@ -39,23 +57,17 @@ var hostsFile = "/etc/hosts";
 var markerStart = "# SiteBlocker START";
 var markerEnd = "# SiteBlocker END";
 
-// Find HTML file path
+// Find HTML file path (use same scriptDir from above)
 var htmlFile = "blocked.html";
-if (!File.Exists(htmlFile))
+var scriptHtml = Path.Combine(scriptDir, "blocked.html");
+if (File.Exists(scriptHtml))
 {
-    var scriptPath = Environment.GetCommandLineArgs().FirstOrDefault() ?? "";
-    if (!string.IsNullOrEmpty(scriptPath) && File.Exists(scriptPath))
-    {
-        var scriptDir = Path.GetDirectoryName(Path.GetFullPath(scriptPath));
-        if (!string.IsNullOrEmpty(scriptDir))
-        {
-            var altHtml = Path.Combine(scriptDir, "blocked.html");
-            if (File.Exists(altHtml))
-            {
-                htmlFile = altHtml;
-            }
-        }
-    }
+    htmlFile = scriptHtml;
+}
+else if (!File.Exists(htmlFile))
+{
+    // Fallback to current directory
+    htmlFile = Path.Combine(Directory.GetCurrentDirectory(), "blocked.html");
 }
 
 class Config

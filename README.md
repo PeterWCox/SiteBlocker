@@ -38,12 +38,24 @@ export PATH="$PATH:/Users/pcox/.dotnet/tools"
 chmod +x siteblocker.csx
 ```
 
-### 4. Create an alias
+### 4. Set up the focus command
+
+**Option A: Run the installer (Recommended)**
+
+```bash
+cd /Users/pcox/dev/SiteBlocker
+./install.sh
+source ~/.zshrc  # or ~/.bashrc
+```
+
+This will automatically add a `focus` alias to your shell config.
+
+**Option B: Manual setup**
 
 Add this to your `~/.zshrc` (or `~/.bashrc` if using bash):
 
 ```bash
-alias focus="sudo dotnet-script /Users/pcox/dev/SiteBlocker/siteblocker.csx activate"
+alias focus="/Users/pcox/dev/SiteBlocker/focus.sh activate"
 ```
 
 Then reload your shell:
@@ -51,7 +63,13 @@ Then reload your shell:
 source ~/.zshrc
 ```
 
-**Note:** The script requires `sudo` because it modifies `/etc/hosts`.
+**Option C: Use the wrapper script directly**
+
+```bash
+/Users/pcox/dev/SiteBlocker/focus.sh activate
+```
+
+**Note:** The script requires `sudo` because it modifies `/etc/hosts`. The wrapper script handles this automatically.
 
 ### 4. Configure your blocklist
 
@@ -84,12 +102,20 @@ This will:
 
 ### Check status
 ```bash
-sudo dotnet-script siteblocker.csx status
+focus.sh status
+```
+or
+```bash
+/Users/pcox/dev/SiteBlocker/focus.sh status
 ```
 
 ### Deactivate manually
 ```bash
-sudo dotnet-script siteblocker.csx deactivate
+focus.sh deactivate
+```
+or
+```bash
+/Users/pcox/dev/SiteBlocker/focus.sh deactivate
 ```
 
 ## How it works
