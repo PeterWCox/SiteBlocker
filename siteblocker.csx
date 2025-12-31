@@ -239,10 +239,11 @@ class SiteBlocker
             var port = config.server_port;
             
             // Build the project first to ensure it's ready
+            Console.WriteLine("Building ASP.NET Core server...");
             var buildInfo = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "dotnet",
-                Arguments = $"build \"{serverProjectPath}\" --no-incremental",
+                Arguments = $"build \"{serverProjectPath}\"",
                 WorkingDirectory = serverDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -253,21 +254,19 @@ class SiteBlocker
             var buildProcess = System.Diagnostics.Process.Start(buildInfo);
             buildProcess?.WaitForExit();
             
-            // For port 80, we need to run with sudo
-            var fileName = "dotnet";
-            var arguments = $"run --project \"{serverProjectPath}\" --no-build -- {port} \"{htmlFilePath}\"";
-            
-            // If port is 80 or below 1024, we need sudo
-            if (port <= 1024)
+            if (buildProcess?.ExitCode != 0)
             {
-                fileName = "sudo";
-                arguments = $"dotnet run --project \"{serverProjectPath}\" --no-build -- {port} \"{htmlFilePath}\"";
+                var buildError = buildProcess?.StandardError.ReadToEnd() ?? "";
+                Console.WriteLine($"❌ Build failed: {buildError}");
+                return;
             }
             
+            // Run dotnet directly - if we're already running with sudo, it will have permissions
+            Console.WriteLine($"Starting server on port {port}...");
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
-                FileName = fileName,
-                Arguments = arguments,
+                FileName = "dotnet",
+                Arguments = $"run --project \"{serverProjectPath}\" --no-build -- {port} \"{htmlFilePath}\"",
                 WorkingDirectory = serverDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -279,15 +278,29 @@ class SiteBlocker
             
             if (serverProcess != null)
             {
-                // Give it a moment to start
-                Thread.Sleep(500);
-                if (!serverProcess.HasExited)
+                // Give it time to start and check for errors
+                Thread.Sleep(3000);
+                
+                if (serverProcess.HasExited)
                 {
-                    Console.WriteLine($"✓ ASP.NET Core server started on port {config.server_port}");
+                    // Read error output to see what went wrong
+                    var errorOutput = serverProcess.StandardError.ReadToEnd();
+                    var standardOutput = serverProcess.StandardOutput.ReadToEnd();
+                    
+                    Console.WriteLine("❌ Server process exited immediately");
+                    if (!string.IsNullOrEmpty(errorOutput))
+                    {
+                        Console.WriteLine($"Error: {errorOutput}");
+                    }
+                    if (!string.IsNullOrEmpty(standardOutput))
+                    {
+                        Console.WriteLine($"Output: {standardOutput}");
+                    }
+                    Console.WriteLine($"\n💡 Tip: Port {port} requires root privileges. Make sure you're running with sudo.");
                 }
                 else
                 {
-                    Console.WriteLine("Warning: Server process exited immediately");
+                    Console.WriteLine($"✓ ASP.NET Core server started on port {config.server_port}");
                 }
             }
         }
