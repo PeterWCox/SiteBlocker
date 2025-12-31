@@ -2,6 +2,7 @@
 // SiteBlocker - A local DNS blocker for focus sessions
 // Similar to freedom.to, blocks distracting websites via /etc/hosts
 
+#nullable enable
 #r "nuget: System.Text.Json, 8.0.0"
 
 using System;
@@ -73,6 +74,10 @@ class SiteBlocker
     private string hostsFilePath;
     private string markerStart;
     private string markerEnd;
+    private HttpListener? httpListener;
+    private Task? serverTask;
+    private CancellationTokenSource? cancellationTokenSource;
+    private HashSet<string> blockedDomains;
 
     public SiteBlocker(string configFile, string lockFile, string hostsFile, string markerStart, string markerEnd, string scriptDir)
     {
@@ -82,6 +87,7 @@ class SiteBlocker
         this.markerStart = markerStart;
         this.markerEnd = markerEnd;
         this.config = LoadConfig();
+        this.blockedDomains = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     }
 
     private Config LoadConfig()
@@ -193,7 +199,10 @@ class SiteBlocker
         
         foreach (var domain in domains)
         {
-            // Extract base domain (remove www. prefix and TLD)
+            // Always include the original domain
+            expanded.Add(domain);
+            
+            // Extract base domain (remove www. prefix)
             var baseDomain = domain;
             var hasWww = baseDomain.StartsWith("www.");
             if (hasWww)
@@ -201,27 +210,48 @@ class SiteBlocker
                 baseDomain = baseDomain.Substring(4);
             }
             
-            // Remove TLD to get the core domain name
-            string coreDomain = baseDomain;
-            if (baseDomain.EndsWith(".com"))
+            // Only expand base domains (not subdomains)
+            // A base domain has exactly one dot before the TLD (e.g., "twitter.com", not "news.google.com")
+            var parts = baseDomain.Split('.');
+            if (parts.Length < 2)
+                continue; // Invalid domain format
+            
+            // Check if this is a base domain (only 2 parts: domain + TLD)
+            // Or a UK domain (3 parts: domain + co + uk)
+            bool isBaseDomain = false;
+            string coreDomain = "";
+            string tld = "";
+            
+            if (parts.Length == 2)
             {
-                coreDomain = baseDomain.Substring(0, baseDomain.Length - 4);
+                // Base domain like "twitter.com" or "x.com"
+                isBaseDomain = true;
+                coreDomain = parts[0];
+                tld = parts[1];
             }
-            else if (baseDomain.EndsWith(".co.uk"))
+            else if (parts.Length == 3 && parts[1] == "co" && parts[2] == "uk")
             {
-                coreDomain = baseDomain.Substring(0, baseDomain.Length - 6);
-            }
-            else if (baseDomain.EndsWith(".uk"))
-            {
-                coreDomain = baseDomain.Substring(0, baseDomain.Length - 3);
+                // UK domain like "bbc.co.uk"
+                isBaseDomain = true;
+                coreDomain = parts[0];
+                tld = "co.uk";
             }
             
-            // Add both .com and .co.uk variants if we extracted a core domain
-            if (coreDomain != baseDomain && !string.IsNullOrEmpty(coreDomain))
+            // Only expand base domains (not subdomains like "news.google.com" or "mobile.twitter.com")
+            if (isBaseDomain && !string.IsNullOrEmpty(coreDomain))
             {
                 var wwwPrefix = hasWww ? "www." : "";
-                expanded.Add($"{wwwPrefix}{coreDomain}.com");
-                expanded.Add($"{wwwPrefix}{coreDomain}.co.uk");
+                
+                // If it's a .com domain, add .co.uk variant
+                if (tld == "com")
+                {
+                    expanded.Add($"{wwwPrefix}{coreDomain}.co.uk");
+                }
+                // If it's a .co.uk domain, add .com variant
+                else if (tld == "co.uk")
+                {
+                    expanded.Add($"{wwwPrefix}{coreDomain}.com");
+                }
             }
         }
         
@@ -235,6 +265,9 @@ class SiteBlocker
 
         // Expand domains to include both .com and .co.uk variants
         var expandedDomains = ExpandDomains(config.blocklist);
+        
+        // Store blocked domains for logging
+        blockedDomains = expandedDomains;
 
         // Add new entries
         lines.Add($"");
@@ -247,6 +280,104 @@ class SiteBlocker
         
         lines.Add(markerEnd);
         return lines;
+    }
+
+    private void LogBlockedRequest(string host, string path)
+    {
+        var timestamp = DateTime.Now.ToString("HH:mm:ss");
+        var domain = host.Split(':')[0]; // Remove port if present
+        
+        // Check if this domain is in our blocklist
+        var isBlocked = blockedDomains.Contains(domain) || 
+                       blockedDomains.Any(d => domain.EndsWith("." + d, StringComparison.OrdinalIgnoreCase));
+        
+        if (isBlocked)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"[{timestamp}] 🚫 BLOCKED: {domain}{path}");
+            Console.ResetColor();
+        }
+        else
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"[{timestamp}] ⚠️  Request: {domain}{path} (not in blocklist)");
+            Console.ResetColor();
+        }
+    }
+
+    private async Task RunLoggingServerAsync(CancellationToken cancellationToken)
+    {
+        httpListener = new HttpListener();
+        httpListener.Prefixes.Add("http://127.0.0.1:80/");
+        httpListener.Prefixes.Add("http://localhost:80/");
+        
+        try
+        {
+            httpListener.Start();
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("✓ Logging server started on port 80");
+            Console.ResetColor();
+        }
+        catch (HttpListenerException ex)
+        {
+            // Port 80 might require sudo, try a different approach
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"⚠️  Could not start logging server on port 80: {ex.Message}");
+            Console.WriteLine("   Logging will be limited. Run with sudo for full logging.");
+            Console.ResetColor();
+            return;
+        }
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var context = await httpListener.GetContextAsync();
+                var request = context.Request;
+                var response = context.Response;
+
+                // Log the request
+                LogBlockedRequest(request.Headers["Host"] ?? "unknown", request.Url?.PathAndQuery ?? "/");
+
+                // Send a simple response
+                var responseString = "<!DOCTYPE html><html><head><title>Site Blocked</title></head><body><h1>Site Blocked</h1><p>This site is blocked by SiteBlocker.</p></body></html>";
+                var buffer = Encoding.UTF8.GetBytes(responseString);
+                response.ContentType = "text/html";
+                response.ContentLength64 = buffer.Length;
+                await response.OutputStream.WriteAsync(buffer, 0, buffer.Length, cancellationToken);
+                response.Close();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Listener was closed
+                break;
+            }
+            catch (HttpListenerException)
+            {
+                // Connection closed or error
+                continue;
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"⚠️  Server error: {ex.Message}");
+                Console.ResetColor();
+            }
+        }
+    }
+
+    private void StartLoggingServer()
+    {
+        cancellationTokenSource = new CancellationTokenSource();
+        serverTask = Task.Run(() => RunLoggingServerAsync(cancellationTokenSource.Token));
+    }
+
+    private void StopLoggingServer()
+    {
+        cancellationTokenSource?.Cancel();
+        httpListener?.Stop();
+        httpListener?.Close();
+        serverTask?.Wait(TimeSpan.FromSeconds(2));
     }
 
 
@@ -269,6 +400,9 @@ class SiteBlocker
         lines = AddBlockerEntries(lines);
         WriteHosts(lines);
 
+        // Start logging server
+        StartLoggingServer();
+
         Console.WriteLine("✓ SiteBlocker activated!");
         Console.WriteLine($"Blocking {config.blocklist.Count} domains");
         Console.WriteLine("\nPress Ctrl+C to deactivate");
@@ -284,6 +418,9 @@ class SiteBlocker
 
         var duration = GetActiveDuration();
         Console.WriteLine($"Deactivating SiteBlocker (was active for {FormatDuration(duration)})...");
+
+        // Stop logging server
+        StopLoggingServer();
 
         // Remove entries from /etc/hosts
         var lines = ReadHosts();
@@ -332,6 +469,7 @@ class SiteBlocker
 
         Console.WriteLine("SiteBlocker is active. Timer running...");
         Console.WriteLine("Press Ctrl+C to deactivate\n");
+        Console.WriteLine("Blocked site visits will be logged below:\n");
 
         try
         {

@@ -5,12 +5,10 @@ A local DNS blocker for focus sessions, similar to freedom.to. Blocks distractin
 ## Features
 
 - 🚫 Block distracting websites via DNS redirection
-- 🎨 Beautiful HTML page shown when accessing blocked sites (with Tailwind CSS)
 - ⏱️ Track active session duration
 - 🔧 Configurable blocklist
 - 🔒 Lock file mechanism to track active state
 - 💻 Simple CLI interface
-- 🌐 Built-in HTTP server to serve focus page
 
 ## Setup
 
@@ -121,13 +119,10 @@ or
 ## How it works
 
 1. **DNS Blocking**: Modifies `/etc/hosts` to redirect blocked domains to `127.0.0.1`
-2. **ASP.NET Core Server**: Starts a local web server on port 80 to serve a beautiful "Focus Mode" page
-3. **Lock File**: Creates `~/.siteblocker.lock` to track active state and start time
-4. **Timer**: Calculates duration from lock file timestamp
+2. **Lock File**: Creates `~/.siteblocker.lock` to track active state and start time
+3. **Timer**: Calculates duration from lock file timestamp
 
-When you try to access a blocked site, the browser will connect to `127.0.0.1:80` (HTTP) and you'll see a beautiful HTML page encouraging you to stay focused!
-
-**Note**: The server runs on port 80 (HTTP). Modern browsers may try HTTPS first for some sites, which will show a connection error. HTTP requests will successfully show the focus page.
+When you try to access a blocked site, the browser will try to connect to `127.0.0.1` but there's no server running, so the connection fails and the site is effectively blocked. The browser will show a connection error (like "ERR_CONNECTION_REFUSED").
 
 ## Security Note
 
