@@ -85,11 +85,10 @@ class SiteBlocker
     private string htmlFilePath;
     private string markerStart;
     private string markerEnd;
-    private HttpListener httpListener;
-    private CancellationTokenSource serverCancellation;
-    private Task serverTask;
+    private System.Diagnostics.Process serverProcess;
+    private string serverProjectPath;
 
-    public SiteBlocker(string configFile, string lockFile, string hostsFile, string htmlFile, string markerStart, string markerEnd)
+    public SiteBlocker(string configFile, string lockFile, string hostsFile, string htmlFile, string markerStart, string markerEnd, string scriptDir)
     {
         this.configFilePath = configFile;
         this.lockFilePath = lockFile;
@@ -97,6 +96,7 @@ class SiteBlocker
         this.htmlFilePath = htmlFile;
         this.markerStart = markerStart;
         this.markerEnd = markerEnd;
+        this.serverProjectPath = Path.Combine(scriptDir, "SiteBlockerServer.csproj");
         this.config = LoadConfig();
     }
 
@@ -214,6 +214,8 @@ class SiteBlocker
         
         foreach (var domain in config.blocklist)
         {
+            // Redirect to localhost - ASP.NET Core server on port 4000 will handle it
+            // Note: Browsers will try HTTPS by default, but we serve HTTP on port 4000
             lines.Add($"{config.redirect_ip} {domain}");
         }
         
@@ -225,116 +227,64 @@ class SiteBlocker
     {
         try
         {
-            httpListener = new HttpListener();
-            httpListener.Prefixes.Add("http://127.0.0.1:80/");
-            httpListener.Start();
-            
-            serverCancellation = new CancellationTokenSource();
-            serverTask = RunHttpServer(serverCancellation.Token);
-            
-            Console.WriteLine("✓ HTTP server started on port 80");
-        }
-        catch (HttpListenerException ex)
-        {
-            if (ex.ErrorCode == 5) // Access denied - try port 8080
+            if (!File.Exists(serverProjectPath))
             {
-                Console.WriteLine("Port 80 requires root. Trying port 8080...");
-                try
-                {
-                    httpListener = new HttpListener();
-                    httpListener.Prefixes.Add("http://127.0.0.1:8080/");
-                    httpListener.Start();
-                    
-                    serverCancellation = new CancellationTokenSource();
-                    serverTask = Task.Run(() => RunHttpServer(serverCancellation.Token));
-                    
-                    Console.WriteLine("✓ HTTP server started on port 8080");
-                    Console.WriteLine("Note: You may need to update /etc/hosts to redirect to 127.0.0.1:8080");
-                }
-                catch (Exception e2)
-                {
-                    Console.WriteLine($"Warning: Could not start HTTP server: {e2.Message}");
-                    Console.WriteLine("Blocked sites will show connection errors instead of the focus page.");
-                }
-            }
-            else
-            {
-                Console.WriteLine($"Warning: Could not start HTTP server: {ex.Message}");
+                Console.WriteLine($"Warning: ASP.NET Core project not found at {serverProjectPath}");
                 Console.WriteLine("Blocked sites will show connection errors instead of the focus page.");
+                return;
+            }
+
+            var serverDir = Path.GetDirectoryName(serverProjectPath);
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "dotnet",
+                Arguments = $"run --project \"{serverProjectPath}\" -- 4000 \"{htmlFilePath}\"",
+                WorkingDirectory = serverDir,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+
+            serverProcess = System.Diagnostics.Process.Start(startInfo);
+            
+            if (serverProcess != null)
+            {
+                // Give it a moment to start
+                Thread.Sleep(500);
+                if (!serverProcess.HasExited)
+                {
+                    Console.WriteLine("✓ ASP.NET Core server started on port 4000");
+                }
+                else
+                {
+                    Console.WriteLine("Warning: Server process exited immediately");
+                }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Warning: Could not start HTTP server: {ex.Message}");
+            Console.WriteLine($"Warning: Could not start ASP.NET Core server: {ex.Message}");
             Console.WriteLine("Blocked sites will show connection errors instead of the focus page.");
-        }
-    }
-
-    private async Task RunHttpServer(CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested && httpListener != null && httpListener.IsListening)
-        {
-            try
-            {
-                var context = await httpListener.GetContextAsync();
-                
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        var response = context.Response;
-                        response.ContentType = "text/html; charset=utf-8";
-                        response.StatusCode = 200;
-                        
-                        if (File.Exists(htmlFilePath))
-                        {
-                            var htmlContent = File.ReadAllText(htmlFilePath);
-                            var buffer = Encoding.UTF8.GetBytes(htmlContent);
-                            response.ContentLength64 = buffer.Length;
-                            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length, cancellationToken);
-                        }
-                        else
-                        {
-                            var defaultHtml = "<html><body><h1>Focus Mode Active</h1><p>This site is blocked.</p></body></html>";
-                            var buffer = Encoding.UTF8.GetBytes(defaultHtml);
-                            response.ContentLength64 = buffer.Length;
-                            await response.OutputStream.WriteAsync(buffer, 0, buffer.Length, cancellationToken);
-                        }
-                        
-                        response.OutputStream.Close();
-                    }
-                    catch
-                    {
-                        // Ignore errors
-                    }
-                }, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (HttpListenerException)
-            {
-                // Listener was closed
-                break;
-            }
-            catch (Exception)
-            {
-                // Ignore other errors and continue
-                await Task.Delay(100, cancellationToken);
-            }
         }
     }
 
     private void StopHttpServer()
     {
-        if (httpListener != null && httpListener.IsListening)
+        if (serverProcess != null && !serverProcess.HasExited)
         {
-            serverCancellation?.Cancel();
-            httpListener.Stop();
-            httpListener.Close();
-            httpListener = null;
-            Console.WriteLine("✓ HTTP server stopped");
+            try
+            {
+                serverProcess.Kill();
+                serverProcess.WaitForExit(2000);
+                serverProcess.Dispose();
+                serverProcess = null;
+                Console.WriteLine("✓ ASP.NET Core server stopped");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Warning: Error stopping server: {ex.Message}");
+            }
         }
     }
 
@@ -445,7 +395,7 @@ class SiteBlocker
 }
 
 // Main
-var blocker = new SiteBlocker(configFile, lockFile, hostsFile, htmlFile, markerStart, markerEnd);
+var blocker = new SiteBlocker(configFile, lockFile, hostsFile, htmlFile, markerStart, markerEnd, scriptDir);
 var args = Environment.GetCommandLineArgs();
 
 // dotnet-script passes: [dotnet-script path, script path, ...args]
