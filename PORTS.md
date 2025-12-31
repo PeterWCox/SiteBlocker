@@ -51,59 +51,42 @@ When you visit a website like `bbc.co.uk`:
 SiteBlocker intercepts this process:
 
 1. **DNS Blocking**: `/etc/hosts` redirects `bbc.co.uk` → `127.0.0.1`
-2. **Local Server**: Our ASP.NET Core server runs on `127.0.0.1:80`
-3. **Automatic Redirect**: Browser connects to `127.0.0.1:80` and gets the focus page
+2. **Connection Failure**: Browser tries to connect to `127.0.0.1` but there's no server running
+3. **Blocked**: Browser shows connection error, effectively blocking the site
 
-### Why Port 80?
+### How It Works
 
-We use **port 80** because:
+When SiteBlocker is active:
 
-- It's the **default HTTP port**
-- Browsers automatically use port 80 for HTTP connections
-- No need to specify `:80` in the URL
-- Works automatically when `/etc/hosts` redirects to `127.0.0.1`
-
-### Port 80 vs Port 4000
-
-| Port | Requires Sudo | Default Behavior | Use Case |
-|------|---------------|------------------|----------|
-| **80** | ✅ Yes | Browser automatically uses it | Production, automatic redirect |
-| **4000** | ❌ No | Must specify `:4000` in URL | Development, testing |
-
-### Example URLs
-
-```bash
-# Port 80 (default HTTP) - works automatically
-http://bbc.co.uk          → Connects to 127.0.0.1:80
-http://127.0.0.1          → Connects to 127.0.0.1:80
-
-# Port 4000 - must specify
-http://127.0.0.1:4000     → Connects to 127.0.0.1:4000
-```
+- Blocked domains resolve to `127.0.0.1` (localhost)
+- Browsers try to connect to `127.0.0.1:443` (HTTPS) or `127.0.0.1:80` (HTTP)
+- Since no server is running on those ports, the connection fails
+- Browser displays "ERR_CONNECTION_REFUSED" or similar error
+- Site is effectively blocked
 
 ## HTTPS vs HTTP
 
-### The HTTPS Problem
+### How Blocking Works
 
 Modern browsers **default to HTTPS** (port 443) for many sites:
 
 ```
 bbc.co.uk → Browser tries https://bbc.co.uk (port 443)
-           → Connection fails (no HTTPS server)
-           → Shows "ERR_CONNECTION_REFUSED"
+           → Resolves to 127.0.0.1:443
+           → Connection fails (no server)
+           → Shows "ERR_CONNECTION_REFUSED" ✅
 ```
-
-### The HTTP Solution
 
 For HTTP (port 80):
 
 ```
 bbc.co.uk → Browser tries http://bbc.co.uk (port 80)
-           → Connects to 127.0.0.1:80
-           → Gets focus page ✅
+           → Resolves to 127.0.0.1:80
+           → Connection fails (no server)
+           → Shows "ERR_CONNECTION_REFUSED" ✅
 ```
 
-**Note**: Some browsers may try HTTPS first, which will fail. HTTP requests will work and show the focus page.
+**Note**: Both HTTP and HTTPS connections will fail, effectively blocking the site. The browser will show a connection error instead of loading the distracting content.
 
 ## Checking Ports
 
@@ -126,14 +109,16 @@ netstat -an | grep LISTEN
 netstat -ano | findstr :80
 ```
 
-### Test a Port
+### Test DNS Resolution
 
 ```bash
-# Test if port 80 is accessible
-curl http://127.0.0.1:80
+# Check if a domain resolves to localhost (blocked)
+nslookup bbc.co.uk
 
-# Test if port 4000 is accessible
-curl http://127.0.0.1:4000
+# Or use dig
+dig bbc.co.uk
+
+# Should show 127.0.0.1 when SiteBlocker is active
 ```
 
 ## Common Port Issues
@@ -150,18 +135,16 @@ sudo lsof -i :80
 sudo kill -9 <PID>
 ```
 
-### "Permission denied" on port 80
-**Problem**: Ports below 1024 require root/sudo privileges.
+### "Permission denied" when modifying /etc/hosts
+**Problem**: Modifying `/etc/hosts` requires root/sudo privileges.
 
-**Solution**: Run with `sudo`:
+**Solution**: Run SiteBlocker with `sudo`:
 ```bash
-sudo dotnet run --project SiteBlockerServer.csproj
+sudo dotnet script siteblocker.csx activate
 ```
 
 ### Port not accessible
-**Problem**: Firewall blocking the port.
-
-**Solution**: Check firewall settings or use a different port (like 4000).
+**Note**: SiteBlocker doesn't run a server, so port accessibility isn't a concern. The blocking works entirely through `/etc/hosts` DNS redirection.
 
 ## SiteBlocker Configuration
 
@@ -169,12 +152,13 @@ In `config.json`:
 
 ```json
 {
+  "redirect_ip": "127.0.0.1",
   "server_port": 80
 }
 ```
 
-- **Port 80**: Requires sudo, works automatically with `/etc/hosts` redirects
-- **Port 4000**: No sudo needed, but must access via `http://127.0.0.1:4000`
+- **redirect_ip**: The IP address blocked domains resolve to (default: `127.0.0.1`)
+- **server_port**: Legacy setting (no longer used - SiteBlocker doesn't run a server)
 
 ## Summary
 
@@ -182,5 +166,6 @@ In `config.json`:
 2. **Port 80** is the default HTTP port (browsers use it automatically)
 3. **Port 443** is the default HTTPS port (encrypted)
 4. **Ports < 1024** require root/sudo privileges
-5. SiteBlocker uses **port 80** so blocked sites automatically redirect to the focus page
+5. SiteBlocker blocks sites by redirecting DNS to `127.0.0.1` via `/etc/hosts`
+6. When browsers try to connect, they get connection errors, effectively blocking the sites
 

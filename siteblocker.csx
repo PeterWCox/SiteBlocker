@@ -57,18 +57,6 @@ var hostsFile = "/etc/hosts";
 var markerStart = "# SiteBlocker START";
 var markerEnd = "# SiteBlocker END";
 
-// Find HTML file path (use same scriptDir from above)
-var htmlFile = "blocked.html";
-var scriptHtml = Path.Combine(scriptDir, "blocked.html");
-if (File.Exists(scriptHtml))
-{
-    htmlFile = scriptHtml;
-}
-else if (!File.Exists(htmlFile))
-{
-    // Fallback to current directory
-    htmlFile = Path.Combine(Directory.GetCurrentDirectory(), "blocked.html");
-}
 
 class Config
 {
@@ -83,21 +71,16 @@ class SiteBlocker
     private string lockFilePath;
     private string configFilePath;
     private string hostsFilePath;
-    private string htmlFilePath;
     private string markerStart;
     private string markerEnd;
-    private System.Diagnostics.Process serverProcess;
-    private string serverProjectPath;
 
-    public SiteBlocker(string configFile, string lockFile, string hostsFile, string htmlFile, string markerStart, string markerEnd, string scriptDir)
+    public SiteBlocker(string configFile, string lockFile, string hostsFile, string markerStart, string markerEnd, string scriptDir)
     {
         this.configFilePath = configFile;
         this.lockFilePath = lockFile;
         this.hostsFilePath = hostsFile;
-        this.htmlFilePath = htmlFile;
         this.markerStart = markerStart;
         this.markerEnd = markerEnd;
-        this.serverProjectPath = Path.Combine(scriptDir, "SiteBlockerServer.csproj");
         this.config = LoadConfig();
     }
 
@@ -259,8 +242,6 @@ class SiteBlocker
         
         foreach (var domain in expandedDomains.OrderBy(d => d))
         {
-            // Redirect to localhost - ASP.NET Core server on port 4000 will handle it
-            // Note: Browsers will try HTTPS by default, but we serve HTTP on port 4000
             lines.Add($"{config.redirect_ip} {domain}");
         }
         
@@ -268,111 +249,6 @@ class SiteBlocker
         return lines;
     }
 
-    private void StartHttpServer()
-    {
-        try
-        {
-            if (!File.Exists(serverProjectPath))
-            {
-                Console.WriteLine($"Warning: ASP.NET Core project not found at {serverProjectPath}");
-                Console.WriteLine("Blocked sites will show connection errors instead of the focus page.");
-                return;
-            }
-
-            var serverDir = Path.GetDirectoryName(serverProjectPath);
-            var port = config.server_port;
-            
-            // Build the project first to ensure it's ready
-            Console.WriteLine("Building ASP.NET Core server...");
-            var buildInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = $"build \"{serverProjectPath}\"",
-                WorkingDirectory = serverDir,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-            
-            var buildProcess = System.Diagnostics.Process.Start(buildInfo);
-            buildProcess?.WaitForExit();
-            
-            if (buildProcess?.ExitCode != 0)
-            {
-                var buildError = buildProcess?.StandardError.ReadToEnd() ?? "";
-                Console.WriteLine($"❌ Build failed: {buildError}");
-                return;
-            }
-            
-            // Run dotnet directly - if we're already running with sudo, it will have permissions
-            Console.WriteLine($"Starting server on port {port}...");
-            var startInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "dotnet",
-                Arguments = $"run --project \"{serverProjectPath}\" --no-build -- {port} \"{htmlFilePath}\"",
-                WorkingDirectory = serverDir,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            };
-
-            serverProcess = System.Diagnostics.Process.Start(startInfo);
-            
-            if (serverProcess != null)
-            {
-                // Give it time to start and check for errors
-                Thread.Sleep(3000);
-                
-                if (serverProcess.HasExited)
-                {
-                    // Read error output to see what went wrong
-                    var errorOutput = serverProcess.StandardError.ReadToEnd();
-                    var standardOutput = serverProcess.StandardOutput.ReadToEnd();
-                    
-                    Console.WriteLine("❌ Server process exited immediately");
-                    if (!string.IsNullOrEmpty(errorOutput))
-                    {
-                        Console.WriteLine($"Error: {errorOutput}");
-                    }
-                    if (!string.IsNullOrEmpty(standardOutput))
-                    {
-                        Console.WriteLine($"Output: {standardOutput}");
-                    }
-                    Console.WriteLine($"\n💡 Tip: Port {port} requires root privileges. Make sure you're running with sudo.");
-                }
-                else
-                {
-                    Console.WriteLine($"✓ ASP.NET Core server started on port {config.server_port}");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Warning: Could not start ASP.NET Core server: {ex.Message}");
-            Console.WriteLine("Blocked sites will show connection errors instead of the focus page.");
-        }
-    }
-
-    private void StopHttpServer()
-    {
-        if (serverProcess != null && !serverProcess.HasExited)
-        {
-            try
-            {
-                serverProcess.Kill();
-                serverProcess.WaitForExit(2000);
-                serverProcess.Dispose();
-                serverProcess = null;
-                Console.WriteLine("✓ ASP.NET Core server stopped");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Warning: Error stopping server: {ex.Message}");
-            }
-        }
-    }
 
     public void Activate()
     {
@@ -387,9 +263,6 @@ class SiteBlocker
 
         // Create lock file with start time
         File.WriteAllText(lockFilePath, DateTime.Now.ToString("O"));
-
-        // Start HTTP server
-        StartHttpServer();
 
         // Modify /etc/hosts
         var lines = ReadHosts();
@@ -411,9 +284,6 @@ class SiteBlocker
 
         var duration = GetActiveDuration();
         Console.WriteLine($"Deactivating SiteBlocker (was active for {FormatDuration(duration)})...");
-
-        // Stop HTTP server
-        StopHttpServer();
 
         // Remove entries from /etc/hosts
         var lines = ReadHosts();
@@ -481,7 +351,7 @@ class SiteBlocker
 }
 
 // Main
-var blocker = new SiteBlocker(configFile, lockFile, hostsFile, htmlFile, markerStart, markerEnd, scriptDir);
+var blocker = new SiteBlocker(configFile, lockFile, hostsFile, markerStart, markerEnd, scriptDir);
 var args = Environment.GetCommandLineArgs();
 
 // dotnet-script passes: [dotnet-script path, script path, ...args]
