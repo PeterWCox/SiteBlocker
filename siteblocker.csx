@@ -237,10 +237,37 @@ class SiteBlocker
 
             var serverDir = Path.GetDirectoryName(serverProjectPath);
             var port = config.server_port;
-            var startInfo = new System.Diagnostics.ProcessStartInfo
+            
+            // Build the project first to ensure it's ready
+            var buildInfo = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "dotnet",
-                Arguments = $"run --project \"{serverProjectPath}\" --no-build -- {port} \"{htmlFilePath}\"",
+                Arguments = $"build \"{serverProjectPath}\" --no-incremental",
+                WorkingDirectory = serverDir,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            
+            var buildProcess = System.Diagnostics.Process.Start(buildInfo);
+            buildProcess?.WaitForExit();
+            
+            // For port 80, we need to run with sudo
+            var fileName = "dotnet";
+            var arguments = $"run --project \"{serverProjectPath}\" --no-build -- {port} \"{htmlFilePath}\"";
+            
+            // If port is 80 or below 1024, we need sudo
+            if (port <= 1024)
+            {
+                fileName = "sudo";
+                arguments = $"dotnet run --project \"{serverProjectPath}\" --no-build -- {port} \"{htmlFilePath}\"";
+            }
+            
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
                 WorkingDirectory = serverDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,

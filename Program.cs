@@ -1,7 +1,7 @@
 var builder = WebApplication.CreateBuilder(args);
 
-// Get port from command line args or default to 4000
-var port = 4000;
+// Get port from command line args or default to 80
+var port = 80;
 if (args.Length > 0 && int.TryParse(args[0], out var parsedPort))
 {
     port = parsedPort;

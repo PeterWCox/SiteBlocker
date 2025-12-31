@@ -121,13 +121,13 @@ or
 ## How it works
 
 1. **DNS Blocking**: Modifies `/etc/hosts` to redirect blocked domains to `127.0.0.1`
-2. **ASP.NET Core Server**: Starts a local web server on port 4000 (configurable) to serve a beautiful "Focus Mode" page
+2. **ASP.NET Core Server**: Starts a local web server on port 80 to serve a beautiful "Focus Mode" page
 3. **Lock File**: Creates `~/.siteblocker.lock` to track active state and start time
 4. **Timer**: Calculates duration from lock file timestamp
 
-When you try to access a blocked site, instead of seeing an error, you'll see a beautiful HTML page encouraging you to stay focused!
+When you try to access a blocked site, the browser will connect to `127.0.0.1:80` (HTTP) and you'll see a beautiful HTML page encouraging you to stay focused!
 
-**Note**: Modern browsers default to HTTPS. Since the server runs on HTTP port 4000, you may need to manually use `http://` for blocked sites, or the browser may show a connection error. The server is running and accessible at `http://127.0.0.1:4000`.
+**Note**: The server runs on port 80 (HTTP). Modern browsers may try HTTPS first for some sites, which will show a connection error. HTTP requests will successfully show the focus page.
 
 ## Security Note
 
