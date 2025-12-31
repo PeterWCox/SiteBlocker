@@ -204,16 +204,60 @@ class SiteBlocker
         return result;
     }
 
+    private HashSet<string> ExpandDomains(List<string> domains)
+    {
+        var expanded = new HashSet<string>(domains);
+        
+        foreach (var domain in domains)
+        {
+            // Extract base domain (remove www. prefix and TLD)
+            var baseDomain = domain;
+            var hasWww = baseDomain.StartsWith("www.");
+            if (hasWww)
+            {
+                baseDomain = baseDomain.Substring(4);
+            }
+            
+            // Remove TLD to get the core domain name
+            string coreDomain = baseDomain;
+            if (baseDomain.EndsWith(".com"))
+            {
+                coreDomain = baseDomain.Substring(0, baseDomain.Length - 4);
+            }
+            else if (baseDomain.EndsWith(".co.uk"))
+            {
+                coreDomain = baseDomain.Substring(0, baseDomain.Length - 6);
+            }
+            else if (baseDomain.EndsWith(".uk"))
+            {
+                coreDomain = baseDomain.Substring(0, baseDomain.Length - 3);
+            }
+            
+            // Add both .com and .co.uk variants if we extracted a core domain
+            if (coreDomain != baseDomain && !string.IsNullOrEmpty(coreDomain))
+            {
+                var wwwPrefix = hasWww ? "www." : "";
+                expanded.Add($"{wwwPrefix}{coreDomain}.com");
+                expanded.Add($"{wwwPrefix}{coreDomain}.co.uk");
+            }
+        }
+        
+        return expanded;
+    }
+
     private List<string> AddBlockerEntries(List<string> lines)
     {
         // Remove existing entries first
         lines = RemoveBlockerEntries(lines);
 
+        // Expand domains to include both .com and .co.uk variants
+        var expandedDomains = ExpandDomains(config.blocklist);
+
         // Add new entries
         lines.Add($"");
         lines.Add(markerStart);
         
-        foreach (var domain in config.blocklist)
+        foreach (var domain in expandedDomains.OrderBy(d => d))
         {
             // Redirect to localhost - ASP.NET Core server on port 4000 will handle it
             // Note: Browsers will try HTTPS by default, but we serve HTTP on port 4000
