@@ -74,6 +74,7 @@ class Config
 {
     public List<string> blocklist { get; set; } = new List<string>();
     public string redirect_ip { get; set; } = "127.0.0.1";
+    public int server_port { get; set; } = 4000;
 }
 
 class SiteBlocker
@@ -235,10 +236,11 @@ class SiteBlocker
             }
 
             var serverDir = Path.GetDirectoryName(serverProjectPath);
+            var port = config.server_port;
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "dotnet",
-                Arguments = $"run --project \"{serverProjectPath}\" -- 4000 \"{htmlFilePath}\"",
+                Arguments = $"run --project \"{serverProjectPath}\" --no-build -- {port} \"{htmlFilePath}\"",
                 WorkingDirectory = serverDir,
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -254,7 +256,7 @@ class SiteBlocker
                 Thread.Sleep(500);
                 if (!serverProcess.HasExited)
                 {
-                    Console.WriteLine("✓ ASP.NET Core server started on port 4000");
+                    Console.WriteLine($"✓ ASP.NET Core server started on port {config.server_port}");
                 }
                 else
                 {
