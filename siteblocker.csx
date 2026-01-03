@@ -294,13 +294,16 @@ class SiteBlocker
         if (isBlocked)
         {
             Console.ForegroundColor = ConsoleColor.Red;
-            Console.WriteLine($"[{timestamp}] 🚫 BLOCKED: {domain}{path}");
+            Console.WriteLine($"    [{timestamp}] 🚫 BLOCKED: {domain}{path}");
+            Console.ResetColor();
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("    💪 Stay strong! You're staying focused! 💪");
             Console.ResetColor();
         }
         else
         {
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"[{timestamp}] ⚠️  Request: {domain}{path} (not in blocklist)");
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine($"    [{timestamp}] ⚠️  Request: {domain}{path} (not in blocklist)");
             Console.ResetColor();
         }
     }
@@ -315,15 +318,15 @@ class SiteBlocker
         {
             httpListener.Start();
             Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("✓ Logging server started on port 80");
+            Console.WriteLine("    ✓ Logging server started on port 80");
             Console.ResetColor();
         }
         catch (HttpListenerException ex)
         {
             // Port 80 might require sudo, try a different approach
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"⚠️  Could not start logging server on port 80: {ex.Message}");
-            Console.WriteLine("   Logging will be limited. Run with sudo for full logging.");
+            Console.WriteLine($"    ⚠️  Could not start logging server on port 80: {ex.Message}");
+            Console.WriteLine("    Logging will be limited. Run with sudo for full logging.");
             Console.ResetColor();
             return;
         }
@@ -360,7 +363,7 @@ class SiteBlocker
             catch (Exception ex)
             {
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine($"⚠️  Server error: {ex.Message}");
+                Console.WriteLine($"    ⚠️  Server error: {ex.Message}");
                 Console.ResetColor();
             }
         }
@@ -381,16 +384,67 @@ class SiteBlocker
     }
 
 
+    private void PrintBanner()
+    {
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine(@"
+    ╔═══════════════════════════════════════════════════════╗
+    ║                                                       ║
+    ║     ███████╗██╗████████╗███████╗                     ║
+    ║     ██╔════╝██║╚══██╔══╝██╔════╝                     ║
+    ║     ███████╗██║   ██║   ███████╗                     ║
+    ║     ╚════██║██║   ██║   ██╔════╝                     ║
+    ║     ███████║██║   ██║   ███████╗                     ║
+    ║     ╚══════╝╚═╝   ╚═╝   ╚══════╝                     ║
+    ║                                                       ║
+    ║     ██████╗ ██╗      ██████╗  ██████╗██╗  ██╗███████╗║
+    ║     ██╔══██╗██║     ██╔═══██╗██╔════╝██║ ██╔╝██╔════╝║
+    ║     ██████╔╝██║     ██║   ██║██║     █████╔╝ █████╗  ║
+    ║     ██╔══██╗██║     ██║   ██║██║     ██╔═██╗ ██╔══╝  ║
+    ║     ██████╔╝███████╗╚██████╔╝╚██████╗██║  ██╗███████╗║
+    ║     ╚═════╝ ╚══════╝ ╚═════╝  ╚═════╝╚═╝  ╚═╝╚══════╝║
+    ║                                                       ║
+    ╚═══════════════════════════════════════════════════════╝
+");
+        Console.ResetColor();
+        
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine("    🚀 Time to focus and achieve greatness! 🚀\n");
+        Console.ResetColor();
+    }
+
+    private void PrintMotivationalMessage()
+    {
+        var messages = new[]
+        {
+            "✨ Every moment of focus is a step toward your goals ✨",
+            "🌟 Distractions blocked. Dreams unlocked. 🌟",
+            "💪 You've got this! Your future self will thank you. 💪",
+            "🎯 Focus is a superpower. You're activating yours now. 🎯",
+            "🔥 Turn off the noise. Turn on your potential. 🔥"
+        };
+        
+        var random = new Random();
+        var message = messages[random.Next(messages.Length)];
+        
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine($"    {message}\n");
+        Console.ResetColor();
+    }
+
     public void Activate()
     {
         if (IsActive())
         {
             var duration = GetActiveDuration();
-            Console.WriteLine($"SiteBlocker is already active (running for {FormatDuration(duration)})");
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"\n⚠️  SiteBlocker is already active (running for {FormatDuration(duration)})\n");
+            Console.ResetColor();
             return;
         }
 
-        Console.WriteLine("Activating SiteBlocker...");
+        PrintBanner();
+        Console.WriteLine("    Activating SiteBlocker...\n");
 
         // Create lock file with start time
         File.WriteAllText(lockFilePath, DateTime.Now.ToString("O"));
@@ -403,21 +457,43 @@ class SiteBlocker
         // Start logging server
         StartLoggingServer();
 
-        Console.WriteLine("✓ SiteBlocker activated!");
-        Console.WriteLine($"Blocking {config.blocklist.Count} domains");
-        Console.WriteLine("\nPress Ctrl+C to deactivate");
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine("    ✓ SiteBlocker activated!");
+        Console.WriteLine($"    ✓ Blocking {config.blocklist.Count} domains");
+        Console.ResetColor();
+        
+        PrintMotivationalMessage();
+        
+        Console.WriteLine("    Press Ctrl+C to deactivate\n");
     }
 
     public void Deactivate()
     {
         if (!IsActive())
         {
-            Console.WriteLine("SiteBlocker is not active");
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("\n⚠️  SiteBlocker is not active\n");
+            Console.ResetColor();
             return;
         }
 
         var duration = GetActiveDuration();
-        Console.WriteLine($"Deactivating SiteBlocker (was active for {FormatDuration(duration)})...");
+        
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine(@"
+    ╔═══════════════════════════════════════════════════════╗
+    ║                                                       ║
+    ║              🎉 Great Session Complete! 🎉            ║
+    ║                                                       ║
+    ╚═══════════════════════════════════════════════════════╝
+");
+        Console.ResetColor();
+        
+        Console.WriteLine($"    Deactivating SiteBlocker...");
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine($"    ⏱️  You stayed focused for: {FormatDuration(duration)}");
+        Console.ResetColor();
+        Console.WriteLine();
 
         // Stop logging server
         StopLoggingServer();
@@ -433,7 +509,13 @@ class SiteBlocker
             File.Delete(lockFilePath);
         }
 
-        Console.WriteLine("✓ SiteBlocker deactivated!");
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine("    ✓ SiteBlocker deactivated!");
+        Console.ResetColor();
+        
+        Console.ForegroundColor = ConsoleColor.Yellow;
+        Console.WriteLine("\n    🌟 Well done! Every focused moment counts. 🌟\n");
+        Console.ResetColor();
     }
 
     public void Status()
@@ -441,13 +523,39 @@ class SiteBlocker
         if (IsActive())
         {
             var duration = GetActiveDuration();
-            Console.WriteLine("SiteBlocker is ACTIVE");
-            Console.WriteLine($"Duration: {FormatDuration(duration)}");
-            Console.WriteLine($"Blocking {config.blocklist.Count} domains");
+            
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine(@"
+    ╔═══════════════════════════════════════════════════════╗
+    ║                                                       ║
+    ║              ✅ SiteBlocker is ACTIVE ✅              ║
+    ║                                                       ║
+    ╚═══════════════════════════════════════════════════════╝
+");
+            Console.ResetColor();
+            
+            Console.ForegroundColor = ConsoleColor.Cyan;
+            Console.WriteLine($"    ⏱️  Duration: {FormatDuration(duration)}");
+            Console.WriteLine($"    🚫 Blocking: {config.blocklist.Count} domains");
+            Console.ResetColor();
+            
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("\n    💪 Keep going! You're doing great! 💪\n");
+            Console.ResetColor();
         }
         else
         {
-            Console.WriteLine("SiteBlocker is INACTIVE");
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine(@"
+    ╔═══════════════════════════════════════════════════════╗
+    ║                                                       ║
+    ║            ⚪ SiteBlocker is INACTIVE ⚪              ║
+    ║                                                       ║
+    ╚═══════════════════════════════════════════════════════╝
+");
+            Console.ResetColor();
+            
+            Console.WriteLine("    Run 'focus' to start a focus session!\n");
         }
     }
 
@@ -455,34 +563,57 @@ class SiteBlocker
     {
         if (!IsActive())
         {
-            Console.WriteLine("SiteBlocker is not active. Use 'activate' command first.");
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine("\n❌ SiteBlocker is not active. Use 'activate' command first.\n");
+            Console.ResetColor();
             return;
         }
 
         Console.CancelKeyPress += (sender, e) =>
         {
             e.Cancel = true;
-            Console.WriteLine("\n\nDeactivating...");
+            Console.WriteLine("\n");
             Deactivate();
             Environment.Exit(0);
         };
 
-        Console.WriteLine("SiteBlocker is active. Timer running...");
-        Console.WriteLine("Press Ctrl+C to deactivate\n");
-        Console.WriteLine("Blocked site visits will be logged below:\n");
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine("    ✓ SiteBlocker is active. Timer running...");
+        Console.ResetColor();
+        Console.WriteLine("    Press Ctrl+C to deactivate\n");
+        
+        Console.ForegroundColor = ConsoleColor.Cyan;
+        Console.WriteLine("    📊 Blocked site visits will be logged below:\n");
+        Console.ResetColor();
 
         try
         {
             while (true)
             {
                 var duration = GetActiveDuration();
-                Console.Write($"\rActive for: {FormatDuration(duration)}");
+                var totalSeconds = (int)duration.TotalSeconds;
+                
+                // Create a simple progress indicator
+                var progressBar = "";
+                var barLength = 20;
+                var filled = (totalSeconds % (barLength * 10)) / 10;
+                for (int i = 0; i < barLength; i++)
+                {
+                    if (i < filled)
+                        progressBar += "█";
+                    else
+                        progressBar += "░";
+                }
+                
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.Write($"\r    ⏱️  Active for: {FormatDuration(duration)}  {progressBar}");
+                Console.ResetColor();
                 Thread.Sleep(1000);
             }
         }
         catch (Exception)
         {
-            Console.WriteLine("\n\nDeactivating...");
+            Console.WriteLine("\n");
             Deactivate();
         }
     }
@@ -504,12 +635,22 @@ if (args.Length > 1)
 
 if (string.IsNullOrEmpty(command))
 {
-    Console.WriteLine("Usage: siteblocker <command>");
-    Console.WriteLine("Commands:");
-    Console.WriteLine("  activate   - Activate the site blocker");
-    Console.WriteLine("  deactivate - Deactivate the site blocker");
-    Console.WriteLine("  status     - Show current status");
-    Console.WriteLine("  run        - Run interactive mode with timer");
+    Console.ForegroundColor = ConsoleColor.Cyan;
+    Console.WriteLine(@"
+    ╔═══════════════════════════════════════════════════════╗
+    ║              SiteBlocker - Focus Helper               ║
+    ╚═══════════════════════════════════════════════════════╝
+");
+    Console.ResetColor();
+    Console.WriteLine("    Usage: siteblocker <command>\n");
+    Console.WriteLine("    Commands:");
+    Console.ForegroundColor = ConsoleColor.Green;
+    Console.WriteLine("      activate   - Activate the site blocker");
+    Console.WriteLine("      deactivate - Deactivate the site blocker");
+    Console.WriteLine("      status     - Show current status");
+    Console.WriteLine("      run        - Run interactive mode with timer");
+    Console.ResetColor();
+    Console.WriteLine();
     Environment.Exit(1);
 }
 
