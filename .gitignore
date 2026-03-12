@@ -19,3 +19,9 @@ obj/
 .dotnet/
 *.csx.lock
 
+# Cursor IDE
+.cursor/
+
+# Logs
+proxy.log
+
